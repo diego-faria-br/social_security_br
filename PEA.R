@@ -165,12 +165,6 @@ PEA_M_Rur <- cbind(PEA_M_Rur_2018,PEA_M_Rur_2019$x2019,PEA_M_Rur_2020$x2020,PEA_
 names(PEA_M_Rur) <- c('idade',2018,2019,2020,2021)
 
 
-
-
-
-
-
-
 # Writing in file routine -------------------------------------------------
 
 

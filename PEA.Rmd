@@ -1,0 +1,389 @@
+---
+title: "Abas de Preços"
+author: "Diego Oliveira Faria"
+date: "11/25/2021"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = F,warning = F)
+```
+
+
+```{r Bibliotecas}
+knitr::opts_chunk$set(echo = TRUE)
+library(PNADcIBGE)
+library(survey)
+library(srvyr)
+library(tidyr)
+library(dplyr)
+library(kableExtra)
+library(ggplot2)
+rm(list = ls())
+SM_2019 <- 998
+
+```
+
+## Objetivo
+
+Calcular o PEA por idade a partir dos dados do IBGE
+
+***********
+
+## Carregamento dos Dados
+
+As variáveis carregadas são:
+
+* `V1022` - Situacao Domicilia: 1-Urbano, 2-Rural
+* `V2005` - Situação da pessoa no domicílio'01'-Pessoa responsavel pelo domicilio/02-Conjuge/03-Conjuge
+* `V2007` - Sexo
+* `V2009` - Idade do Morador
+* `VD4002` - Situação em relação a ocupação (1 - Ocupada, 2-Desocupada)
+
+
+```{r, cache=TRUE}
+  
+dados_srvyr_2020<-as_survey(pnadc_design(read_pnadc("./data/PNADC_2020_visita5.txt","./data/input_PNADC_2020_visita5.txt",vars=c(
+  'V1022',
+  'V2005',
+  'V4010',
+  'V2009',
+  'VD4009',
+  'VD4002'))))
+
+dados_srvyr_2019<-as_survey(pnadc_design(read_pnadc("./data/PNADC_2019_visita5.txt","./data/input_PNADC_2019_visita5.txt",vars=c(
+  'V1022',
+  'V2005',
+  'V4010',
+  'V2009',
+  'V2007',
+  'VD4010',
+  'VD4009',
+  'VD4012',
+  'VD4002',
+  'VD4019'))))
+
+
+dados_srvyr_2018<-as_survey(pnadc_design(read_pnadc("./data/PNADC_2018_visita5.txt","./data/input_PNADC_2018_visita5.txt",vars=c(
+  'V1022',
+  'V2005',
+  'V4010',
+  'V2009',
+  'V2007',
+  'VD4010',
+  'VD4009',
+  'VD4012',
+  'VD4002',
+  'VD4019'))))
+
+dados_srvyr_2017<-as_survey(pnadc_design(read_pnadc("./data/PNADC_2017_visita5.txt","./data/input_PNADC_2017_visita5.txt",vars=c(
+  'V1022',
+  'V2005',
+  'V4010',
+  'V2009',
+  'V2007',
+  'VD4010',
+  'VD4009',
+  'VD4012',
+  'VD4002',
+  'VD4019'))))
+
+dados_srvyr_2016<-as_survey(pnadc_design(read_pnadc("./data/PNADC_2016_visita5.txt","./data/input_PNADC_2016_visita5.txt",vars=c(
+  'V1022',
+  'V2005',
+  'V4010',
+  'V2009',
+  'V2007',
+  'VD4010',
+  'VD4009',
+  'VD4012',
+  'VD4002',
+  'VD4019'))))
+
+```
+
+***********
+## Filtros para classificação
+
+### Classificação de Segurados Urbanos
+
+De acordo com a Nota Técnica do IPEA e realizando algumas adptações necessárias devido às mudanças metodológicas da PNAD a partir de 2015, chegamos à seguinte classificação de segurados urbanos:
+
+1. Empregados com carteira e empregados dom. com carteira em atividade nao agricola (VD4009 e VD4010);
+2. Sem carteira/Contra Propria/Empregadores por CP/Em atividada nao agricola que contribuem para previdencia (VD4009 e VD4010);
+<!-- 3 - Empregados sem carteira que não contribuiram para a previdencia/mas que tinha outro emprego em atividade urbana ; ou -->
+3. Militares/Func Publicos Estatutarios no trabalho principal, independente do setor de trabalho.
+<!-- 5 - Empregados sem carteira com dois empregos, primeiro agricola, e que o segundo seja militar ou servidor estatutario; ou -->
+<!-- 6 - Empregados sem carteira com dois empregos, primeiro agricola, e que o segundo seja militar ou servidor estatutario. -->
+
+
+```{r Segurados_Urbanos}
+
+dados_srvyr_2019 <- dados_srvyr_2019 %>% mutate(Acima_SM = as.numeric(VD4019>SM))
+
+dados_srvyr_2019 <- dados_srvyr_2019 %>% mutate(Seg_Urb =ifelse((V2009>=14&
+                                                         (VD4009 %in% c('01','03')&VD4010!='01'|
+                                                            VD4009 %in% c('02','04','06','08','09','10')&VD4010!='01'&VD4012=='1'|
+                                                            VD4009 %in% c('05','07'))
+                                                       ),1,0))
+```
+
+
+### Classificação de Ocupados Urbanos/Rurais
+
+A nova metodologia da PNAD permite usar os mesmos indicadores da PNAD antiga para classificação quanto à ocupação. 
+
+* Os **ocupados urbanos** são aqueles cuja variável `VD4002` seja igual a 1 (ocupada), e a variável `VD4010` seja diferente de '01' (Agricultura, pecuária, produção florestal, pesca e aquicultura).
+
+* Os **ocupados rurais** são aqueles cuja variável `VD4002` seja igual a 1 (ocupada), e a variável `VD4010` seja igual a '01' (Agricultura, pecuária, produção florestal, pesca e aquicultura).
+
+
+
+```{r Ocupados}
+
+#Ocupado  Maior de 14 - Ocupado - Trabalha no Urbano
+
+dados_srvyr <- dados_srvyr %>% mutate(Ocup_Urb =ifelse((V2009>=14&VD4002== '1'&VD4010 != '01'),1,0))
+
+
+# Maior de 14 - Ocupado - Trabalha no Ramo Rural
+dados_srvyr <- dados_srvyr %>% mutate(Ocup_Rur =ifelse((V2009>=14&VD4002=='1'&VD4010 == '01'),1,0))
+```
+
+## Renda Média - Segurados Urbanos Acima de 1 SM
+
+
+```{r SalMedSegUrbAcim}
+
+SalMedSegUrbAcimH<-dados_srvyr %>% mutate(V2009=as.factor(V2009)) %>% filter(Acima_SM==T,Seg_Urb==1,V2007=='1') %>% group_by(V2009) %>%
+  summarise(SalMedSegUrbAcimH = survey_mean(VD4019,na.rm=T))
+  
+SalMedSegUrbAcimM<-dados_srvyr %>% mutate(V2009=as.factor(V2009)) %>% filter(Acima_SM==T,Seg_Urb==1,V2007=='2') %>% group_by(V2009) %>%
+  summarise(SalMedSegUrbAcimM = survey_mean(VD4019,na.rm=T))
+```
+***********
+
+## Resultados
+
+### Renda Média - Ocupados Urbanos e Rurais
+
+
+```{r SalMedPopOcup}
+SalMedPopOcupUrbH<-dados_srvyr %>% mutate(V2009=as.factor(V2009)) %>% filter(Ocup_Urb==1,V2007=='1') %>% group_by(V2009) %>%
+  summarise(SalMedPopOcupUrbH = survey_mean(VD4019,na.rm=T))
+  
+SalMedPopOcupUrbM<-dados_srvyr %>% mutate(V2009=as.factor(V2009)) %>% filter(Ocup_Urb==1,V2007=='2') %>% group_by(V2009) %>%
+  summarise(SalMedPopOcupUrbM = survey_mean(VD4019,na.rm=T))
+
+SalMedPopOcupRurH<- dados_srvyr %>% mutate(V2009=as.factor(V2009)) %>% filter(Ocup_Rur==1,V2007=='1') %>% group_by(V2009) %>%
+  summarise(SalMedPopOcupRurH = survey_mean(VD4019,na.rm=T))
+
+SalMedPopOcupRurM<- dados_srvyr %>% mutate(V2009=as.factor(V2009)) %>% filter(Ocup_Rur==1,V2007=='2') %>% group_by(V2009) %>%
+  summarise(SalMedPopOcupRurM = survey_mean(VD4019,na.rm=T))
+  
+```
+
+```{r}
+
+arquivo_final <- dplyr::bind_cols(SalMedSegUrbAcimH,SalMedSegUrbAcimM[,2:3],SalMedPopOcupUrbH[,2:3],SalMedPopOcupUrbM[,2:3],SalMedPopOcupRurH[,2:3],SalMedPopOcupRurM[,2:3])
+
+arquivo_final <- arquivo_final %>% mutate_if(is.numeric , replace_na, replace = 0)
+
+arquivo_final<- arquivo_final %>% dplyr::rename('idade'='V2009')
+
+arquivo_final %>% kbl() %>% kable_styling()
+```
+
+### Arquivo Final
+
+You can also embed plots, for example:
+
+```{r SalMedSegUrbAcimH, eval=FALSE, echo=FALSE}
+
+arquivo_final %>% filter(as.numeric(as.character(idade))>=14 & as.numeric(as.character(idade))<=90) %>%
+  ggplot(aes(x=idade,y=SalMedSegUrbAcimH))+geom_col()+theme(axis.text.x = element_text(size = 6, angle = 90, hjust = .5, vjust = .5, face = "plain"))
+
+```
+```{r SalMedSegUrbAcimM, eval=FALSE,echo=FALSE}
+
+arquivo_final %>% filter(as.numeric(as.character(idade))>=14 & as.numeric(as.character(idade))<=90) %>%
+  ggplot(aes(x=idade,y=SalMedSegUrbAcimM))+geom_col()+theme(axis.text.x = element_text(size = 6, angle = 90, hjust = .5, vjust = .5, face = "plain"))
+
+```
+
+
+```{r SalMedPopOcupUrbH, eval=FALSE,echo=FALSE}
+
+arquivo_final %>% filter(as.numeric(as.character(idade))>=14 & as.numeric(as.character(idade))<=90) %>%
+  ggplot(aes(x=idade,y=SalMedPopOcupUrbH))+geom_col()+theme(axis.text.x = element_text(size = 6, angle = 90, hjust = .5, vjust = .5, face = "plain"))
+
+```
+
+```{r SalMedPopOcupUrbM,eval=FALSE,echo=FALSE}
+
+arquivo_final %>% filter(as.numeric(as.character(idade))>=14 & as.numeric(as.character(idade))<=90) %>%
+  ggplot(aes(x=idade,y=SalMedPopOcupUrbH))+geom_col()+theme(axis.text.x = element_text(size = 6, angle = 90, hjust = .5, vjust = .5, face = "plain"))
+
+```
+
+```{r WriteToFIle}
+
+openxlsx::write.xlsx(arquivo_final,'arquivo_final.xlsx',sheetName = "Preços")
+
+```
+
+***********
+
+## Análise Exploratória - Gênero
+
+Rearranjo dos dados para construção dos gráficos para visualização Home/Mulher do salario medio da população ocupada acima de 1 S.M.
+
+```{r Data_Wrangling}
+
+
+require(stringr)
+
+a_final_mulher_media <- arquivo_final %>% select(idade,SalMedPopOcupRurM) %>% pivot_longer(SalMedPopOcupRurM,names_to = 'Genero', values_to = "Media")%>% mutate(Genero = str_replace_all(Genero,'\\w+','M'))
+a_final_mulher_media_se <- arquivo_final %>% select(idade,SalMedPopOcupRurM_se) %>% pivot_longer(SalMedPopOcupRurM_se,names_to = 'Genero', values_to = "SE") %>% mutate(Genero = str_replace_all(Genero,'\\w+','M'))
+a_final_mulher<- a_final_mulher_media %>% left_join(a_final_mulher_media_se, by=c('idade','Genero'))
+
+
+a_final_homem_media <- arquivo_final %>% select(idade,SalMedPopOcupRurH) %>% pivot_longer(SalMedPopOcupRurH,names_to = 'Genero', values_to = "Media")%>% mutate(Genero = str_replace_all(Genero,'\\w+','H'))
+a_final_homem_media_se <- arquivo_final %>% select(idade,SalMedPopOcupRurH_se) %>% pivot_longer(SalMedPopOcupRurH_se,names_to = 'Genero', values_to = "SE") %>% mutate(Genero = str_replace_all(Genero,'\\w+','H'))
+a_final_homem<- a_final_homem_media %>% left_join(a_final_homem_media_se, by=c('idade','Genero'))
+df_ocup_Rur <- bind_rows(a_final_mulher,a_final_homem)
+
+
+mulher_urb_media <- arquivo_final %>% select(idade,SalMedPopOcupUrbM) %>% pivot_longer(SalMedPopOcupUrbM,names_to = 'Genero', values_to = "Media")%>% mutate(Genero = str_replace_all(Genero,'\\w+','M'))
+mulher_urb_se <- arquivo_final %>% select(idade,SalMedPopOcupUrbM_se) %>% pivot_longer(SalMedPopOcupUrbM_se,names_to = 'Genero', values_to = "SE") %>% mutate(Genero = str_replace_all(Genero,'\\w+','M'))
+mulher_ocup_urb<- mulher_urb_media %>% left_join(mulher_urb_se, by=c('idade','Genero'))
+
+
+homem_urb_media <- arquivo_final %>% select(idade,SalMedPopOcupUrbH) %>% pivot_longer(SalMedPopOcupUrbH,names_to = 'Genero', values_to = "Media")%>% mutate(Genero = str_replace_all(Genero,'\\w+','H'))
+homem_urb_se <- arquivo_final %>% select(idade,SalMedPopOcupUrbH_se) %>% pivot_longer(SalMedPopOcupUrbH_se,names_to = 'Genero', values_to = "SE") %>% mutate(Genero = str_replace_all(Genero,'\\w+','H'))
+homem_ocup_urb<- homem_urb_media %>% left_join(homem_urb_se, by=c('idade','Genero'))
+df_ocup_Urb <- bind_rows(mulher_ocup_urb,homem_ocup_urb)
+
+
+mulher_seg_media <- arquivo_final %>% select(idade,SalMedSegUrbAcimM) %>% pivot_longer(SalMedSegUrbAcimM,names_to = 'Genero', values_to = "Media")%>% mutate(Genero = str_replace_all(Genero,'\\w+','M'))
+mulher_seg_se <- arquivo_final %>% select(idade,SalMedSegUrbAcimM_se) %>% pivot_longer(SalMedSegUrbAcimM_se,names_to = 'Genero', values_to = "SE") %>% mutate(Genero = str_replace_all(Genero,'\\w+','M'))
+mulher_seg_urb<- mulher_seg_media %>% left_join(mulher_seg_se, by=c('idade','Genero'))
+
+
+homem_seg_media <- arquivo_final %>% select(idade,SalMedSegUrbAcimH) %>% pivot_longer(SalMedSegUrbAcimH,names_to = 'Genero', values_to = "Media")%>% mutate(Genero = str_replace_all(Genero,'\\w+','H'))
+homem_seg_se <- arquivo_final %>% select(idade,SalMedSegUrbAcimH_se) %>% pivot_longer(SalMedSegUrbAcimH_se,names_to = 'Genero', values_to = "SE") %>% mutate(Genero = str_replace_all(Genero,'\\w+','H'))
+homem_seg_urb<- homem_seg_media %>% left_join(homem_seg_se, by=c('idade','Genero'))
+df_seg_urb <- bind_rows(mulher_seg_urb,homem_seg_urb)
+
+
+```
+
+
+
+```{r Plot_Ocup_Rural, echo=FALSE}
+
+require(dplyr)    
+
+
+df_ocup_Rur %>% 
+  filter(as.numeric(as.character(idade))>=14) %>% 
+  ggplot(aes(x=as.numeric(as.character(idade)),y=Media,colour=Genero))+ 
+  geom_line()+
+  geom_ribbon(aes(ymin=Media-2*SE,ymax=Media+2*SE, fill=Genero),linetype=2,alpha = 0.2)+
+  scale_x_continuous(breaks = c(15,20,30,40,50,60,65),labels =c(15,20,30,40,50,60,65))+
+  xlim(14,65)+
+  ylim(0,4500)+
+  labs(title ="Ocupados Rurais por Genero",
+       x = 'Idade',
+       y = 'Renda Mensal (R$)',
+       colour = 'Genero'
+       )+
+  theme_minimal()
+  
+
+
+```
+
+```{r Plot_Ocup_Urb, echo=FALSE}
+
+require(dplyr)    
+
+
+df_ocup_Urb %>% 
+  filter(as.numeric(as.character(idade))>=14) %>% 
+  ggplot(aes(x=as.numeric(as.character(idade)),y=Media,colour=Genero))+ 
+  geom_line()+
+  geom_ribbon(aes(ymin=Media-2*SE,ymax=Media+2*SE, fill=Genero),linetype=2,alpha = 0.2)+
+  scale_x_continuous(breaks = c(15,20,30,40,50,60,65),labels =c(15,20,30,40,50,60,65))+
+  xlim(14,65)+
+  ylim(0,4500)+
+  labs(title ="Ocupados Urbano por Genero",
+       x = 'Idade',
+       y = 'Renda Mensal (R$)',
+       colour = 'Genero'
+       )+
+  theme_minimal()
+  
+
+
+```
+
+```{r Plot_Seg_Urb_Acima, echo=FALSE}
+
+require(dplyr)    
+
+
+df_seg_urb %>% 
+  filter(as.numeric(as.character(idade))>=14) %>% 
+  ggplot(aes(x=as.numeric(as.character(idade)),y=Media,colour=Genero))+ 
+  geom_line()+
+  geom_ribbon(aes(ymin=Media-2*SE,ymax=Media+2*SE, fill=Genero),linetype=2,alpha = 0.2)+
+  scale_x_continuous(breaks = c(15,20,30,40,50,60,65),labels =c(15,20,30,40,50,60,65))+
+  xlim(14,65)+
+  ylim(0,4500)+
+  labs(title ="Ocupados Urbano por Genero",
+       x = 'Idade',
+       y = 'Renda Mensal (R$)',
+       colour = 'Genero'
+       )+
+  theme_minimal()
+  
+
+
+
+
+```
+
+```{r , echo=FALSE,eval=FALSE}
+
+require(dplyr)    
+
+
+
+
+arquivo_final %>% 
+  select(idade,SalMedPopOcupRurH,SalMedPopOcupRurH_se,SalMedPopOcupRurM,SalMedPopOcupRurM_se) %>%
+  filter(as.numeric(as.character(idade))>=14) %>% 
+ # pivot_longer(cols = starts_with('SalMedPopOcupRur'),names_to = 'Gender',values_to = 'Media') %>%
+  #mutate(Gender = as.factor(Gender)) %>% 
+  ggplot(aes(x=as.numeric(as.character(idade)),y=SalMedPopOcupRurH))+ 
+  geom_line(color='navyblue')+
+  labs(colour='Homem')+
+  geom_ribbon(aes(ymin=SalMedPopOcupRurH-2*SalMedPopOcupRurH_se,ymax=SalMedPopOcupRurH+2*SalMedPopOcupRurH_se),fill='navyblue', alpha = 0.2)+
+  geom_line(aes(y=SalMedPopOcupRurM),color='cyan')+
+  geom_ribbon(aes(ymin=SalMedPopOcupRurM-2*SalMedPopOcupRurM_se,ymax=SalMedPopOcupRurM+2*SalMedPopOcupRurM_se),fill='cyan', alpha = 0.2)+
+  scale_x_continuous(breaks = c(15,20,30,40,50,60,70),labels =c(15,20,30,40,50,60,70))+
+  xlim(14,70)+
+  ylim(0,4500)+
+  geom_label(aes(label=c("H")))
+
+  
+
+
+```
+
+
